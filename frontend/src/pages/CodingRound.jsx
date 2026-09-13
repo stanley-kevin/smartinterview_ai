@@ -94,6 +94,9 @@ export default function CodingRound() {
 
   const handleLanguageChange = (newLang) => {
     setLanguage(newLang);
+    setSampleResults(null);
+    setLastVerifiedCode(null);
+    setLastVerifiedLang(null);
   };
 
   const handleCodeChange = (newVal) => {
@@ -109,6 +112,9 @@ export default function CodingRound() {
       ...prev,
       [language]: problem.starterCode[language],
     }));
+    setSampleResults(null);
+    setLastVerifiedCode(null);
+    setLastVerifiedLang(null);
     toast("Code reset to starter template", { icon: "🔄" });
   };
 
@@ -131,14 +137,22 @@ export default function CodingRound() {
 
       setSampleResults(res);
       setSelectedCaseTab(0);
-      if (res.allPassed) {
+      if (
+        res &&
+        Array.isArray(res.results) &&
+        res.results.length > 0 &&
+        res.allPassed === true &&
+        res.passedCount === res.totalCount
+      ) {
         setLastVerifiedCode(currentCode);
         setLastVerifiedLang(language);
         toast.success(`All ${res.passedCount} sample test cases passed! Submit enabled.`);
       } else {
         setLastVerifiedCode(null);
         setLastVerifiedLang(null);
-        toast.error(`${res.passedCount}/${res.totalCount} sample test cases passed. Fix failing cases before submitting.`);
+        toast.error(
+          `${res?.passedCount || 0}/${res?.totalCount || 0} sample test cases passed. Fix failing cases before submitting.`
+        );
       }
     } catch (err) {
       setLastVerifiedCode(null);

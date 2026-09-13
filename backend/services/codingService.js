@@ -51,27 +51,29 @@ const fs = require('fs');
 const raw = fs.readFileSync(0, 'utf-8').trim();
 const lines = raw.split(/\\r?\\n/);
 
+function twoSum(target, nums) {
+  // TODO: Implement your solution here
+  // Return two 0-based indices separated by a space (e.g. "0 1")
+  return "";
+}
+
 function solve() {
   if (lines.length < 2) return;
   const target = parseInt(lines[0].trim(), 10);
   const nums = lines[1].trim().split(/\\s+/).map(Number);
 
-  const map = new Map();
-  for (let i = 0; i < nums.length; i++) {
-    const complement = target - nums[i];
-    if (map.has(complement)) {
-      const idx1 = map.get(complement);
-      const idx2 = i;
-      console.log(Math.min(idx1, idx2) + " " + Math.max(idx1, idx2));
-      return;
-    }
-    map.set(nums[i], i);
-  }
+  const result = twoSum(target, nums);
+  console.log(result);
 }
 
 solve();
 `,
       python: `import sys
+
+def two_sum(target: int, nums: list[int]) -> str:
+    # TODO: Implement your solution here
+    # Return two 0-based indices separated by a space (e.g. "0 1")
+    return ""
 
 def solve():
     lines = sys.stdin.read().split()
@@ -80,24 +82,23 @@ def solve():
     target = int(lines[0])
     nums = [int(x) for x in lines[1:]]
 
-    # TODO: Implement your solution
-    seen = {}
-    for i, num in enumerate(nums):
-        diff = target - num
-        if diff in seen:
-            print(f"{min(seen[diff], i)} {max(seen[diff], i)}")
-            return
-        seen[num] = i
+    result = two_sum(target, nums)
+    print(result)
 
 if __name__ == '__main__':
     solve()
 `,
       cpp: `#include <iostream>
 #include <vector>
-#include <unordered_map>
-#include <algorithm>
+#include <string>
 
 using namespace std;
+
+string twoSum(int target, const vector<int>& nums) {
+    // TODO: Implement your solution here
+    // Return two 0-based indices separated by a space (e.g. "0 1")
+    return "";
+}
 
 int main() {
     int target;
@@ -109,15 +110,7 @@ int main() {
         nums.push_back(val);
     }
 
-    unordered_map<int, int> seen;
-    for (int i = 0; i < (int)nums.size(); i++) {
-        int diff = target - nums[i];
-        if (seen.find(diff) != seen.end()) {
-            cout << min(seen[diff], i) << " " << max(seen[diff], i) << "\\n";
-            return 0;
-        }
-        seen[nums[i]] = i;
-    }
+    cout << twoSum(target, nums) << "\\n";
     return 0;
 }
 `,
@@ -170,16 +163,9 @@ Output "true" if valid, or "false" otherwise.`,
 const s = fs.readFileSync(0, 'utf-8').trim();
 
 function isValid(str) {
-  const stack = [];
-  const map = { ')': '(', '}': '{', ']': '[' };
-  for (let ch of str) {
-    if (ch === '(' || ch === '{' || ch === '[') {
-      stack.push(ch);
-    } else if (map[ch]) {
-      if (stack.pop() !== map[ch]) return false;
-    }
-  }
-  return stack.length === 0;
+  // TODO: Implement your solution here
+  // Return true if valid bracket sequence, or false otherwise
+  return false;
 }
 
 console.log(isValid(s) ? "true" : "false");
@@ -187,16 +173,9 @@ console.log(isValid(s) ? "true" : "false");
       python: `import sys
 
 def isValid(s: str) -> bool:
-    stack = []
-    mapping = {")": "(", "}": "{", "]": "["}
-    for char in s:
-        if char in mapping:
-            top = stack.pop() if stack else '#'
-            if mapping[char] != top:
-                return False
-        elif char in "({[":
-            stack.append(char)
-    return not stack
+    # TODO: Implement your solution here
+    # Return True if valid bracket sequence, or False otherwise
+    return False
 
 if __name__ == '__main__':
     s = sys.stdin.read().strip()
@@ -204,25 +183,13 @@ if __name__ == '__main__':
 `,
       cpp: `#include <iostream>
 #include <string>
-#include <stack>
 
 using namespace std;
 
 bool isValid(const string& s) {
-    stack<char> st;
-    for (char c : s) {
-        if (c == '(' || c == '{' || c == '[') {
-            st.push(c);
-        } else {
-            if (st.empty()) return false;
-            char top = st.top();
-            st.pop();
-            if (c == ')' && top != '(') return false;
-            if (c == '}' && top != '{') return false;
-            if (c == ']' && top != '[') return false;
-        }
-    }
-    return st.empty();
+    // TODO: Implement your solution here
+    // Return true if valid bracket sequence, or false otherwise
+    return false;
 }
 
 int main() {
@@ -274,19 +241,9 @@ int main() {
 const s = fs.readFileSync(0, 'utf-8').replace(/[\\r\\n]+$/, '');
 
 function lengthOfLongestSubstring(str) {
-  let maxLen = 0;
-  let left = 0;
-  const seen = new Map();
-
-  for (let right = 0; right < str.length; right++) {
-    const char = str[right];
-    if (seen.has(char) && seen.get(char) >= left) {
-      left = seen.get(char) + 1;
-    }
-    seen.set(char, right);
-    maxLen = Math.max(maxLen, right - left + 1);
-  }
-  return maxLen;
+  // TODO: Implement your solution here
+  // Return the integer length of longest substring without repeating characters
+  return 0;
 }
 
 console.log(lengthOfLongestSubstring(s));
@@ -294,15 +251,9 @@ console.log(lengthOfLongestSubstring(s));
       python: `import sys
 
 def lengthOfLongestSubstring(s: str) -> int:
-    seen = {}
-    left = 0
-    max_len = 0
-    for right, char in enumerate(s):
-        if char in seen and seen[char] >= left:
-            left = seen[char] + 1
-        seen[char] = right
-        max_len = max(max_len, right - left + 1)
-    return max_len
+    # TODO: Implement your solution here
+    # Return the integer length of longest substring without repeating characters
+    return 0
 
 if __name__ == '__main__':
     raw = sys.stdin.read().rstrip('\\r\\n')
@@ -310,28 +261,20 @@ if __name__ == '__main__':
 `,
       cpp: `#include <iostream>
 #include <string>
-#include <unordered_map>
-#include <algorithm>
 
 using namespace std;
 
 int lengthOfLongestSubstring(const string& s) {
-    unordered_map<char, int> seen;
-    int maxLen = 0, left = 0;
-    for (int right = 0; right < (int)s.length(); right++) {
-        if (seen.count(s[right]) && seen[s[right]] >= left) {
-            left = seen[s[right]] + 1;
-        }
-        seen[s[right]] = right;
-        maxLen = max(maxLen, right - left + 1);
-    }
-    return maxLen;
+    // TODO: Implement your solution here
+    // Return the integer length of longest substring without repeating characters
+    return 0;
 }
 
 int main() {
     string s;
-    getline(cin, s);
-    cout << lengthOfLongestSubstring(s) << "\\n";
+    if (getline(cin, s)) {
+        cout << lengthOfLongestSubstring(s) << "\\n";
+    }
     return 0;
 }
 `,
@@ -417,9 +360,15 @@ async function runSampleCases({ attemptId, userId, code, language }) {
       stdin: testCase.input,
     });
 
-    const normalizedExpected = testCase.output.trim();
+    const normalizedExpected = (testCase.output || "").trim();
     const normalizedActual = (exec.stdout || "").trim();
-    const passed = !exec.compileError && !exec.stderr && normalizedActual === normalizedExpected;
+    const passed =
+      !exec.compileError &&
+      !exec.stderr &&
+      !exec.error &&
+      normalizedExpected.length > 0 &&
+      normalizedActual.length > 0 &&
+      normalizedActual === normalizedExpected;
 
     results.push({
       caseIndex: i + 1,
@@ -441,11 +390,15 @@ async function runSampleCases({ attemptId, userId, code, language }) {
   attempt.markModified("codingData");
   await attempt.save();
 
-  const allPassed = results.every((r) => r.passed);
+  const allPassed =
+    sampleCases.length > 0 &&
+    results.length === sampleCases.length &&
+    results.every((r) => r.passed === true);
+
   return {
     results,
     allPassed,
-    passedCount: results.filter((r) => r.passed).length,
+    passedCount: results.filter((r) => r.passed === true).length,
     totalCount: results.length,
   };
 }
@@ -479,9 +432,15 @@ async function submitCode({ attemptId, userId, code, language }) {
       stdin: sc.input,
     });
 
-    const normalizedExpected = sc.output.trim();
+    const normalizedExpected = (sc.output || "").trim();
     const normalizedActual = (execSample.stdout || "").trim();
-    const passed = !execSample.compileError && !execSample.stderr && normalizedActual === normalizedExpected;
+    const passed =
+      !execSample.compileError &&
+      !execSample.stderr &&
+      !execSample.error &&
+      normalizedExpected.length > 0 &&
+      normalizedActual.length > 0 &&
+      normalizedActual === normalizedExpected;
     if (passed) samplePassedCount++;
   }
 
@@ -506,9 +465,15 @@ async function submitCode({ attemptId, userId, code, language }) {
       stdin: testCase.input,
     });
 
-    const normalizedExpected = testCase.output.trim();
+    const normalizedExpected = (testCase.output || "").trim();
     const normalizedActual = (exec.stdout || "").trim();
-    const passed = !exec.compileError && !exec.stderr && normalizedActual === normalizedExpected;
+    const passed =
+      !exec.compileError &&
+      !exec.stderr &&
+      !exec.error &&
+      normalizedExpected.length > 0 &&
+      normalizedActual.length > 0 &&
+      normalizedActual === normalizedExpected;
 
     if (passed) passedCount++;
 

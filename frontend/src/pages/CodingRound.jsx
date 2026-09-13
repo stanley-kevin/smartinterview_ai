@@ -36,6 +36,8 @@ export default function CodingRound() {
     python: "",
     cpp: "",
   });
+  const [lastVerifiedCode, setLastVerifiedCode] = useState(null);
+  const [lastVerifiedLang, setLastVerifiedLang] = useState(null);
 
   const [timeLeft, setTimeLeft] = useState(1800); // 30 mins default
   const [activeTab, setActiveTab] = useState("problem"); // problem | testcases | console
@@ -64,6 +66,8 @@ export default function CodingRound() {
           python: starter.python || "",
           cpp: starter.cpp || "",
         });
+        setLastVerifiedCode(null);
+        setLastVerifiedLang(null);
         setPhase("coding");
       })
       .catch((err) => {
@@ -109,7 +113,7 @@ export default function CodingRound() {
   };
 
   const handleRunSample = async () => {
-    const currentCode = codeByLang[language];
+    const currentCode = codeByLang[language] || "";
     if (!currentCode.trim()) {
       toast.error("Editor is empty. Write your solution first.");
       return;
@@ -128,22 +132,52 @@ export default function CodingRound() {
       setSampleResults(res);
       setSelectedCaseTab(0);
       if (res.allPassed) {
-        toast.success(`All ${res.passedCount} sample test cases passed!`);
+        setLastVerifiedCode(currentCode);
+        setLastVerifiedLang(language);
+        toast.success(`All ${res.passedCount} sample test cases passed! Submit enabled.`);
       } else {
-        toast.error(`${res.passedCount}/${res.totalCount} sample test cases passed.`);
+        setLastVerifiedCode(null);
+        setLastVerifiedLang(null);
+        toast.error(`${res.passedCount}/${res.totalCount} sample test cases passed. Fix failing cases before submitting.`);
       }
     } catch (err) {
+      setLastVerifiedCode(null);
+      setLastVerifiedLang(null);
       toast.error(err.message || "Execution error. Please try again.");
     } finally {
       setPhase("coding");
     }
   };
 
+  const currentCode = codeByLang[language] || "";
+  const isCodeVerified = Boolean(
+    lastVerifiedCode !== null &&
+    lastVerifiedLang === language &&
+    lastVerifiedCode === currentCode &&
+    sampleResults?.allPassed
+  );
+
+  let submitDisabledReason = "";
+  if (!currentCode.trim()) {
+    submitDisabledReason = "Write your solution before submitting";
+  } else if (!sampleResults) {
+    submitDisabledReason = "Run your code and pass all sample cases first";
+  } else if (!sampleResults.allPassed) {
+    submitDisabledReason = `Fix failing sample cases (${sampleResults.passedCount}/${sampleResults.totalCount} passed)`;
+  } else if (lastVerifiedCode !== currentCode || lastVerifiedLang !== language) {
+    submitDisabledReason = "Code modified since last run — re-run sample cases to verify";
+  }
+
   const handleSubmit = async (isAuto = false) => {
     if (submittingRef.current) return;
-    const currentCode = codeByLang[language];
+    const currentCode = codeByLang[language] || "";
     if (!currentCode.trim() && !isAuto) {
       toast.error("Please write code before submitting.");
+      return;
+    }
+
+    if (!isCodeVerified && !isAuto) {
+      toast.error(submitDisabledReason || "Run and pass all sample cases before submitting.");
       return;
     }
 
@@ -162,7 +196,7 @@ export default function CodingRound() {
       if (isAuto) {
         toast("Time expired — code submitted automatically.", { icon: "⏰" });
       } else {
-        toast.success("Solution submitted & evaluated successfully!");
+        toast.success("Solution submitted & verified successfully!");
       }
     } catch (err) {
       toast.error(err.message || "Submission failed. Please try again.");
@@ -209,7 +243,6 @@ export default function CodingRound() {
   }
 
   const urgent = timeLeft <= 180;
-  const currentCode = codeByLang[language] || "";
 
   return (
     <div className="flex h-screen flex-col bg-ink text-text overflow-hidden">
@@ -246,12 +279,27 @@ export default function CodingRound() {
                 )}
                 Run Code
               </button>
-              <button
-                onClick={() => handleSubmit(false)}
-                className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:bg-accent/90"
-              >
-                Submit Solution
-              </button>
+
+              <div className="relative group">
+                <button
+                  onClick={() => handleSubmit(false)}
+                  disabled={!isCodeVerified || phase === "running" || phase === "submitting"}
+                  title={!isCodeVerified ? submitDisabledReason : "Submit verified solution"}
+                  className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-medium transition-all ${
+                    isCodeVerified
+                      ? "bg-accent text-white shadow-lg shadow-accent/20 hover:bg-accent/90 cursor-pointer"
+                      : "bg-surface-2 text-text-faint border border-edge/60 cursor-not-allowed opacity-60"
+                  }`}
+                >
+                  {isCodeVerified && <span className="text-signal">✓</span>}
+                  Submit Solution
+                </button>
+                {!isCodeVerified && submitDisabledReason && (
+                  <div className="pointer-events-none absolute right-0 top-full mt-1.5 hidden w-64 rounded-md border border-edge bg-ink/95 p-2 text-[11px] text-text-muted shadow-xl backdrop-blur group-hover:block z-50">
+                    <span className="font-semibold text-amber">Verification Required:</span> {submitDisabledReason}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -430,46 +478,76 @@ export default function CodingRound() {
               {sampleResults ? (
                 (() => {
                   const currentCase = sampleResults.results[selectedCaseTab] || sampleResults.results[0];
-                  if (!currentCase) return null;
                   return (
-                    <div className="space-y-2 font-mono text-[11px]">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-text">Test Case {currentCase.caseIndex}</span>
-                        <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                            currentCase.passed ? "bg-signal/15 text-signal" : "bg-rose/15 text-rose"
-                          }`}
-                        >
-                          {currentCase.passed ? "✓ Passed" : "✗ Failed"}
-                        </span>
-                      </div>
-
-                      {currentCase.compileError ? (
-                        <div className="rounded border border-rose/30 bg-rose/10 p-2 text-rose">
-                          <div className="font-bold">Compile / Syntax Error:</div>
-                          <pre className="mt-1 whitespace-pre-wrap">{currentCase.compileError}</pre>
+                    <div className="space-y-3 font-mono text-[11px]">
+                      {/* Verification Status Alert */}
+                      {isCodeVerified ? (
+                        <div className="flex items-center justify-between rounded border border-signal/30 bg-signal/10 px-3 py-1.5 text-xs text-signal">
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-bold">✓ Verified</span>
+                            <span>All {sampleResults.passedCount} sample cases passed — you can submit.</span>
+                          </span>
+                          <span className="text-[10px] text-signal/80 bg-signal/15 px-1.5 py-0.5 rounded">Submit Unlocked</span>
                         </div>
-                      ) : currentCase.stderr ? (
-                        <div className="rounded border border-rose/30 bg-rose/10 p-2 text-rose">
-                          <div className="font-bold">Runtime Error:</div>
-                          <pre className="mt-1 whitespace-pre-wrap">{currentCase.stderr}</pre>
+                      ) : lastVerifiedCode !== currentCode || lastVerifiedLang !== language ? (
+                        <div className="flex items-center justify-between rounded border border-amber/30 bg-amber/10 px-3 py-1.5 text-xs text-amber">
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-bold">⚠️ Code Modified</span>
+                            <span>Code modified since last run — re-run sample cases to enable submission.</span>
+                          </span>
+                          <span className="text-[10px] text-amber/80 bg-amber/15 px-1.5 py-0.5 rounded">Submit Locked</span>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="rounded bg-ink/70 p-2">
-                            <span className="text-text-faint">Expected:</span>
-                            <pre className="mt-1 text-signal whitespace-pre-wrap">{currentCase.expectedOutput}</pre>
-                          </div>
-                          <div className="rounded bg-ink/70 p-2">
-                            <span className="text-text-faint">Your Output:</span>
-                            <pre
-                              className={`mt-1 whitespace-pre-wrap ${
-                                currentCase.passed ? "text-signal" : "text-rose"
+                        <div className="flex items-center justify-between rounded border border-rose/30 bg-rose/10 px-3 py-1.5 text-xs text-rose">
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-bold">✗ Incomplete</span>
+                            <span>{sampleResults.passedCount} of {sampleResults.totalCount} sample cases passed — fix these before submitting.</span>
+                          </span>
+                          <span className="text-[10px] text-rose/80 bg-rose/15 px-1.5 py-0.5 rounded">Submit Locked</span>
+                        </div>
+                      )}
+
+                      {currentCase && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-text">Test Case {currentCase.caseIndex}</span>
+                            <span
+                              className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                                currentCase.passed ? "bg-signal/15 text-signal" : "bg-rose/15 text-rose"
                               }`}
                             >
-                              {currentCase.actualOutput || "(empty)"}
-                            </pre>
+                              {currentCase.passed ? "✓ Passed" : "✗ Failed"}
+                            </span>
                           </div>
+
+                          {currentCase.compileError ? (
+                            <div className="rounded border border-rose/30 bg-rose/10 p-2 text-rose">
+                              <div className="font-bold">Compile / Syntax Error:</div>
+                              <pre className="mt-1 whitespace-pre-wrap">{currentCase.compileError}</pre>
+                            </div>
+                          ) : currentCase.stderr ? (
+                            <div className="rounded border border-rose/30 bg-rose/10 p-2 text-rose">
+                              <div className="font-bold">Runtime Error:</div>
+                              <pre className="mt-1 whitespace-pre-wrap">{currentCase.stderr}</pre>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded bg-ink/70 p-2">
+                                <span className="text-text-faint">Expected:</span>
+                                <pre className="mt-1 text-signal whitespace-pre-wrap">{currentCase.expectedOutput}</pre>
+                              </div>
+                              <div className="rounded bg-ink/70 p-2">
+                                <span className="text-text-faint">Your Output:</span>
+                                <pre
+                                  className={`mt-1 whitespace-pre-wrap ${
+                                    currentCase.passed ? "text-signal" : "text-rose"
+                                  }`}
+                                >
+                                  {currentCase.actualOutput || "(empty)"}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

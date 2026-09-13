@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { startGD, turnGD, scoreGD } from "../api/practice";
@@ -32,6 +32,16 @@ export default function GroupDiscussionRound() {
   const [typingPersona, setTypingPersona] = useState(null);
   const [result, setResult] = useState(null);
 
+  // --- Web Speech API State ---
+  const [isListening, setIsListening] = useState(false);
+  const [speechError, setSpeechError] = useState(null);
+  const recognitionRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+
+  const isSpeechSupported =
+    typeof window !== "undefined" &&
+    ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
+
   const chatBottomRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -41,6 +51,113 @@ export default function GroupDiscussionRound() {
   useEffect(() => {
     scrollToBottom();
   }, [turns, isAiTyping]);
+
+  // Clean up speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Reset silence timer whenever user speaks
+  const resetSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+    silenceTimerRef.current = setTimeout(() => {
+      if (recognitionRef.current && isListening) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+        setIsListening(false);
+      }
+    }, 8000); // Stop automatically after 8 seconds of silence
+  }, [isListening]);
+
+  const toggleSpeechRecognition = () => {
+    if (!isSpeechSupported) {
+      toast("Voice input is not supported in this browser. Please type your response.", { icon: "ℹ️" });
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      setIsListening(false);
+      return;
+    }
+
+    setSpeechError(null);
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    let finalTranscriptAccumulator = inputText;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      resetSilenceTimer();
+      toast("Listening... speak your turn", { icon: "🎙️", duration: 2500 });
+    };
+
+    recognition.onresult = (event) => {
+      resetSilenceTimer();
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcriptChunk = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscriptAccumulator = (finalTranscriptAccumulator ? `${finalTranscriptAccumulator} ` : "") + transcriptChunk.trim();
+          setInputText(finalTranscriptAccumulator);
+        } else {
+          interim += transcriptChunk;
+        }
+      }
+
+      if (interim) {
+        setInputText((finalTranscriptAccumulator ? `${finalTranscriptAccumulator} ` : "") + interim);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "not-allowed" || event.error === "permission-denied") {
+        setSpeechError("Microphone permission denied. Please allow microphone access or type your turn.");
+        toast.error("Microphone permission denied.");
+      } else if (event.error === "no-speech") {
+        // Handled silently
+      } else {
+        setSpeechError(`Speech error: ${event.error}`);
+      }
+      setIsListening(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start speech recognition:", err);
+      setIsListening(false);
+    }
+  };
 
   // --- Initialize GD ---
   useEffect(() => {
@@ -67,6 +184,13 @@ export default function GroupDiscussionRound() {
 
   const handleSendTurn = async (e) => {
     e?.preventDefault();
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {}
+      setIsListening(false);
+    }
+
     if (!inputText.trim() || isAiTyping) return;
 
     const userText = inputText.trim();
@@ -138,7 +262,7 @@ export default function GroupDiscussionRound() {
           <span className="h-7 w-7 animate-spin rounded-full border-2 border-edge border-t-accent" />
           <div className="text-base font-medium text-text">Analyzing discussion transcript…</div>
           <div className="text-xs text-text-muted max-w-sm">
-            Evaluating communication clarity, domain relevance, collaboration dynamics, and leadership.
+            Evaluating your arguments across domain depth, articulation, listening, leadership, and synthesis.
           </div>
         </div>
       </div>
@@ -158,45 +282,38 @@ export default function GroupDiscussionRound() {
   }
 
   const userTurnCount = turns.filter((t) => t.speakerType === "user").length;
-  const canEnd = userTurnCount >= 2;
 
   return (
     <div className="flex h-screen flex-col bg-ink text-text">
-      {/* Header */}
-      <header className="shrink-0 border-b border-edge/60 bg-ink/95 px-6 py-3.5">
+      {/* Top Header */}
+      <header className="shrink-0 border-b border-edge/60 bg-surface/80 backdrop-blur px-6 py-3.5">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-4">
             <Link to={`/rounds?mode=${mode}${company ? `&company=${company}` : ""}`}>
               <Logo />
             </Link>
-            <span className="hidden tag-mono text-accent sm:inline">Round 4 · Group Discussion</span>
+            <span className="hidden tag-mono text-accent sm:inline">Round 4 · Group Discussion (GD)</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 rounded-md border border-edge bg-surface-2 px-3 py-1 font-mono text-xs text-text-muted">
-              <span className="h-2 w-2 rounded-full bg-signal animate-pulse" />
-              {userTurnCount} {userTurnCount === 1 ? "turn" : "turns"} spoken
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 rounded-full border border-edge bg-surface-2 px-3 py-1 text-xs">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-signal" />
+              <span className="font-mono text-text">Live Panel Session</span>
             </div>
 
             <button
               onClick={handleEndDiscussion}
-              disabled={userTurnCount < 1}
-              className={`rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                canEnd
-                  ? "bg-accent text-white hover:bg-accent/90"
-                  : userTurnCount >= 1
-                  ? "border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20"
-                  : "border border-edge bg-surface text-text-faint opacity-40 cursor-not-allowed"
-              }`}
+              disabled={userTurnCount < 1 || isAiTyping}
+              className="btn-primary !py-1.5 text-xs shadow-md shadow-accent/25"
             >
-              Conclude & Score
+              Conclude GD →
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-hidden px-4 py-4 sm:px-6">
+      {/* Main GD Workspace */}
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-hidden p-4 sm:p-6">
         {/* Topic Banner */}
         <div className="mb-3 shrink-0 rounded-lg border border-edge bg-surface p-4">
           <div className="flex items-center justify-between gap-2">
@@ -306,27 +423,89 @@ export default function GroupDiscussionRound() {
           <div ref={chatBottomRef} />
         </div>
 
-        {/* Input Bar */}
+        {/* Input & Voice Bar */}
         <form onSubmit={handleSendTurn} className="mt-3 shrink-0">
+          {/* Listening Indicator Banner */}
+          {isListening && (
+            <div className="mb-2 flex items-center justify-between rounded-md border border-rose/40 bg-rose/10 px-3 py-1.5 text-xs text-rose">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose" />
+                </span>
+                <span className="font-medium">Microphone active — speaking live transcript. Speak clearly…</span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleSpeechRecognition}
+                className="font-mono text-[11px] underline hover:text-rose/80"
+              >
+                Stop mic
+              </button>
+            </div>
+          )}
+
+          {speechError && (
+            <div className="mb-2 rounded-md border border-amber/40 bg-amber/10 px-3 py-1.5 text-xs text-amber">
+              ⚠️ {speechError}
+            </div>
+          )}
+
           <div className="relative flex items-center">
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Contribute your perspective to the panel (e.g., 'Building on Rahul's point, I believe...')"
+              placeholder={
+                isListening
+                  ? "Transcribing your speech in real time..."
+                  : isSpeechSupported
+                  ? "Type or tap the mic to speak your perspective..."
+                  : "Type your perspective into the panel..."
+              }
               disabled={isAiTyping}
-              className="w-full rounded-lg border border-edge bg-surface px-4 py-3.5 pr-28 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+              className={`w-full rounded-lg border bg-surface px-4 py-3.5 pr-36 text-sm text-text placeholder:text-text-faint focus:outline-none focus:ring-1 disabled:opacity-50 transition-colors ${
+                isListening
+                  ? "border-rose/60 focus:border-rose focus:ring-rose/40 shadow-[0_0_12px_rgba(242,97,122,0.15)]"
+                  : "border-edge focus:border-accent focus:ring-accent"
+              }`}
             />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isAiTyping}
-              className="absolute right-2 rounded-md bg-accent px-4 py-2 text-xs font-medium text-white transition-opacity hover:bg-accent/90 disabled:opacity-40"
-            >
-              Speak
-            </button>
+
+            <div className="absolute right-2 flex items-center gap-1.5">
+              {/* Mic Speech Button */}
+              {isSpeechSupported ? (
+                <button
+                  type="button"
+                  onClick={toggleSpeechRecognition}
+                  disabled={isAiTyping}
+                  title={isListening ? "Stop listening" : "Speak your turn"}
+                  className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs transition-all ${
+                    isListening
+                      ? "border-rose bg-rose text-white shadow-lg shadow-rose/30 animate-pulse"
+                      : "border-edge bg-surface-2 text-text-muted hover:border-accent/40 hover:text-text"
+                  }`}
+                >
+                  {isListening ? "🔴" : "🎙️"}
+                </button>
+              ) : null}
+
+              {/* Send / Speak turn Button */}
+              <button
+                type="submit"
+                disabled={!inputText.trim() || isAiTyping}
+                className="rounded-md bg-accent px-4 py-2 text-xs font-medium text-white transition-opacity hover:bg-accent/90 disabled:opacity-40"
+              >
+                Speak
+              </button>
+            </div>
           </div>
-          <div className="mt-1.5 flex items-center justify-between px-1 text-[11px] text-text-faint">
-            <span>Tip: Acknowledge peers' arguments and provide concrete technical or real-world examples.</span>
+
+          <div className="mt-1.5 flex flex-wrap items-center justify-between px-1 text-[11px] text-text-faint">
+            <span>
+              {isSpeechSupported
+                ? "🎙️ You can speak your answer using the mic and edit the text before sending."
+                : "Voice input isn't supported in this browser — type your response instead."}
+            </span>
             <span>{userTurnCount < 2 ? "At least 2 turns recommended" : "Ready to conclude whenever"}</span>
           </div>
         </form>

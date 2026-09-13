@@ -11,7 +11,7 @@ const notFound = (req, res, next) => {
  * signature and routes every thrown/next(err) call here.
  */
 const errorHandler = (err, req, res, next) => {
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  let statusCode = err.statusCode || err.status || (res.statusCode === 200 ? 500 : res.statusCode);
   let message = err.message || "Internal server error";
 
   // Mongoose bad ObjectId

@@ -452,16 +452,49 @@ async function runSampleCases({ attemptId, userId, code, language }) {
 
 /**
  * Submit user code against hidden test cases + LLM qualitative review
+ * Structurally guarantees:
+ * 1. Sample test cases are re-verified against submitted code; rejected if any fail.
+ * 2. Hidden test cases are executed through codeExecutor.
+ * 3. Final score is computed directly from hidden-case pass rate (passed / total * 100).
+ * 4. LLM qualitative feedback is advisory and cannot alter the test-backed score.
  */
 async function submitCode({ attemptId, userId, code, language }) {
   const attempt = await Attempt.findOne({ _id: attemptId, user: userId });
   if (!attempt) {
-    throw new Error("Coding attempt not found");
+    const err = new Error("Coding attempt not found");
+    err.statusCode = 404;
+    throw err;
   }
 
   const problem = attempt.codingData.problem;
-  const hiddenCases = problem.hiddenCases || [];
+  const sampleCases = problem.sampleCases || [];
 
+  // 1. Re-verify sample cases pass server-side
+  let samplePassedCount = 0;
+  for (let i = 0; i < sampleCases.length; i++) {
+    const sc = sampleCases[i];
+    const execSample = await executeCode({
+      language,
+      code,
+      stdin: sc.input,
+    });
+
+    const normalizedExpected = sc.output.trim();
+    const normalizedActual = (execSample.stdout || "").trim();
+    const passed = !execSample.compileError && !execSample.stderr && normalizedActual === normalizedExpected;
+    if (passed) samplePassedCount++;
+  }
+
+  if (sampleCases.length > 0 && samplePassedCount < sampleCases.length) {
+    const err = new Error(
+      `Cannot submit: Sample test cases failed (${samplePassedCount}/${sampleCases.length} passed). Run and pass all sample cases first.`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 2. Execute hidden test cases
+  const hiddenCases = problem.hiddenCases || [];
   const hiddenResults = [];
   let passedCount = 0;
 
@@ -483,14 +516,24 @@ async function submitCode({ attemptId, userId, code, language }) {
       caseIndex: i + 1,
       passed,
       error: exec.compileError || exec.stderr || null,
-      status: passed ? "Accepted" : exec.compileError ? "Compile Error" : exec.stderr ? "Runtime Error" : "Wrong Answer",
+      status: passed
+        ? "Accepted"
+        : exec.error === "Time Limit Exceeded"
+        ? "Time Limit Exceeded"
+        : exec.compileError
+        ? "Compile Error"
+        : exec.stderr
+        ? "Runtime Error"
+        : "Wrong Answer",
     });
   }
 
   const totalCases = hiddenCases.length;
+  // 3. Base score computed strictly from real execution pass rate
   const testPassPct = Math.round((passedCount / Math.max(1, totalCases)) * 100);
+  const finalScore = testPassPct;
 
-  // Qualitative AI Review via groqChat or fallback
+  // 4. Advisory qualitative AI review
   let qualitativeFeedback = null;
   const reviewSystemPrompt = `You are a Senior Technical Interviewer and Code Reviewer.
 Analyze the candidate's code submission for the problem: "${problem.title}".
@@ -514,10 +557,13 @@ Provide an objective evaluation. Return JSON with this schema:
 }`;
 
   try {
-    const aiReview = await groqChat([
-      { role: "system", content: "You are a code review expert. Return strict JSON." },
-      { role: "user", content: `Candidate code:\n\`\`\`${language}\n${code}\n\`\`\`\n\n${reviewSystemPrompt}` },
-    ], { json: true, temperature: 0.3 });
+    const aiReview = await groqChat(
+      [
+        { role: "system", content: "You are a code review expert. Return strict JSON." },
+        { role: "user", content: `Candidate code:\n\`\`\`${language}\n${code}\n\`\`\`\n\n${reviewSystemPrompt}` },
+      ],
+      { json: true, temperature: 0.3 }
+    );
 
     if (aiReview && typeof aiReview.codeQualityScore === "number") {
       qualitativeFeedback = aiReview;
@@ -529,10 +575,6 @@ Provide an objective evaluation. Return JSON with this schema:
   if (!qualitativeFeedback) {
     qualitativeFeedback = evaluateFallbackCoding(code, language, testPassPct);
   }
-
-  // Final score weighted: 70% test pass rate + 30% code quality
-  const qualityScore = qualitativeFeedback.codeQualityScore || (testPassPct > 0 ? 80 : 40);
-  const finalScore = Math.min(100, Math.max(0, Math.round(testPassPct * 0.7 + qualityScore * 0.3)));
 
   attempt.score = finalScore;
   attempt.status = "completed";
